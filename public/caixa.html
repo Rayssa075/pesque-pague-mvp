@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Caixa - Gestão de Comandas</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header style="background-color: #2e7d32;">
+    <h1>💵 Caixa / Fechamento de Mesas</h1>
+    <p>Controle Financeiro de Comandas</p>
+  </header>
+
+  <div id="containerCaixa">
+    <p>Aguardando movimentação nas mesas...</p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    socket.on('atualizar_comandas', (comandas) => {
+      const container = document.getElementById('containerCaixa');
+      const mesasAtivas = Object.keys(comandas).filter(m => comandas[m].status !== 'FECHADA');
+
+      if (mesasAtivas.length === 0) {
+        container.innerHTML = '<div class="card"><h3>Nenhuma mesa aberta no momento.</h3></div>';
+        return;
+      }
+
+      container.innerHTML = '';
+
+      mesasAtivas.forEach(mesa => {
+        const c = comandas[mesa];
+        let alertaPagamento = '';
+        let estiloCard = '';
+
+        if (c.status === 'AGUARDANDO_PAGAMENTO') {
+          alertaPagamento = `<div style="background-color: #ffc107; padding: 8px; border-radius: 4px; font-weight: bold; margin-bottom: 10px;">
+                              ⚠️ CLIENTE SOLICITOU A CONTA (${c.formaPagamento})
+                            </div>`;
+          estiloCard = 'border: 2px solid #f57c00;';
+        }
+
+        container.innerHTML += `
+          <div class="card" style="${estiloCard}">
+            ${alertaPagamento}
+            <h3>MESA ${mesa} - ${c.cliente}</h3>
+            <p style="font-size: 20px; margin: 10px 0;"><b>Total Consumido: R$ ${c.total.toFixed(2)}</b></p>
+            <p>Status: <b>${c.status}</b></p>
+            <button class="btn-danger" onclick="encerrarMesa(${mesa})">🔒 Dar Baixa e Liberar Mesa ${mesa}</button>
+          </div>
+        `;
+      });
+    });
+
+    function encerrarMesa(mesa) {
+      if (confirm(`Confirma o recebimento e o encerramento da Mesa ${mesa}?`)) {
+        socket.emit('encerrar_mesa', mesa);
+      }
+    }
+  </script>
+</body>
+</html>
