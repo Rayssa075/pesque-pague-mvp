@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Administrativo - Pesque e Pague</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .grid-dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .metric-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 6px solid #2e7d32;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .metric-card:hover { transform: translateY(-3px); }
+    .metric-card h4 { color: #666; font-size: 14px; text-transform: uppercase; margin: 0; }
+    .metric-card h2 { font-size: 26px; color: #2e7d32; margin-top: 5px; }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      justify-content: center; align-items: center; z-index: 1000;
+    }
+    .modal-content {
+      background: white; width: 90%; max-width: 600px;
+      max-height: 85vh; overflow-y: auto;
+      padding: 25px; border-radius: 8px;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
+    
+    .btn-warning {
+      background-color: #ff9800;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-warning:hover { background-color: #e65100; }
+    
+    .btn-pause {
+      background-color: #757575;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <header style="background-color: #1b5e20;">
+    <h1>⚙️ Painel Administrativo</h1>
+    <p>Gestão de Vendas, Cardápio e Promoções</p>
+  </header>
+
+  <div class="grid-dashboard">
+    <div class="metric-card" onclick="abrirHistorico()">
+      <h4>💰 Faturamento Concluído (Clique para Detalhes)</h4>
+      <h2 id="fatTotal">R$ 0,00</h2>
+    </div>
+    <div class="metric-card" style="border-left-color: #007bff;">
+      <h4>🐟 Itens no Cardápio</h4>
+      <h2 id="qtdItens" style="color: #007bff;">0</h2>
+    </div>
+    <div class="metric-card" style="border-left-color: #f57c00;">
+      <h4>📋 Mesas Ativas</h4>
+      <h2 id="qtdMesas" style="color: #f57c00;">0</h2>
+    </div>
+  </div>
+
+  <div class="card grid-2">
+    <div>
+      <h3>🔥 Mais Vendidos (Destaques)</h3>
+      <ul id="listaMaisVendidos" style="margin-left: 20px;"><li>Nenhuma venda ainda.</li></ul>
+    </div>
+    <div>
+      <h3>❄️ Menos Vendidos</h3>
+      <ul id="listaMenosVendidos" style="margin-left: 20px;"><li>Nenhuma venda ainda.</li></ul>
+    </div>
+  </div>
+
+  <div class="card" style="border-left: 5px solid #9c27b0;">
+    <h3>🎟️ Cupons e Promoções</h3>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <div>
+        <label>Código do Cupom:</label>
+        <input type="text" id="codCupom" placeholder="Ex: PESQUE10">
+      </div>
+      <div>
+        <label>Desconto (%):</label>
+        <input type="number" id="descCupom" placeholder="Ex: 10">
+      </div>
+    </div>
+    <br>
+    <button style="background: #9c27b0;" onclick="salvarCupom()">💾 Salvar Cupom Ativo</button>
+  </div>
+
+  <div class="card">
+    <h3>➕ Cadastrar Novo Produto no Cardápio</h3>
+    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px;">
+      <div>
+        <label>Nome do Produto:</label>
+        <input type="text" id="nomeProd" placeholder="Ex: Tilápia Parmegiana">
+      </div>
+      <div>
+        <label>Preço (R$):</label>
+        <input type="number" step="0.01" id="precoProd" placeholder="Ex: 75.00">
+      </div>
+      <div>
+        <label>Tipo Cobrança:</label>
+        <select id="unidadeProd">
+          <option value="UN">Por Unidade (R$)</option>
+          <option value="KG">Por Quilo (R$/kg)</option>
+        </select>
+      </div>
+      <div>
+        <label>Categoria:</label>
+        <select id="catProd">
+          <option value="Porções">Porções</option>
+          <option value="Bebidas">Bebidas</option>
+          <option value="Acompanhamentos">Acompanhamentos</option>
+          <option value="Sobremesas">Sobremesas</option>
+          <option value="Peixe Limpo">Peixe Limpo</option>
+        </select>
+      </div>
+    </div>
+    <br>
+    <button onclick="cadastrarProduto()">🚀 Salvar e Publicar no Cardápio</button>
+  </div>
+
+  <div class="card">
+    <h3>📝 Gerenciar Itens e Estoque</h3>
+    <div id="tabelaCardapio">Carregando produtos...</div>
+  </div>
+
+  <!-- MODAL DE EDIÇÃO -->
+  <div id="modalEditar" class="modal">
+    <div class="modal-content">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>✏️ Editar Produto</h2>
+        <button class="btn-danger" style="width: auto;" onclick="fecharModalEditar()">X</button>
+      </div>
+      <hr style="margin: 15px 0;">
+      <input type="hidden" id="editId">
+      
+      <label>Nome do Produto:</label>
+      <input type="text" id="editNome" style="width: 100%; margin-bottom: 10px;">
+      
+      <label>Preço (R$):</label>
+      <input type="number" step="0.01" id="editPreco" style="width: 100%; margin-bottom: 10px;">
+      
+      <label>Tipo Cobrança:</label>
+      <select id="editUnidade" style="width: 100%; margin-bottom: 10px;">
+        <option value="UN">Por Unidade (R$)</option>
+        <option value="KG">Por Quilo (R$/kg)</option>
+      </select>
+
+      <label>Categoria:</label>
+      <select id="editCategoria" style="width: 100%; margin-bottom: 15px;">
+        <option value="Porções">Porções</option>
+        <option value="Bebidas">Bebidas</option>
+        <option value="Acompanhamentos">Acompanhamentos</option>
+        <option value="Sobremesas">Sobremesas</option>
+        <option value="Peixe Limpo">Peixe Limpo</option>
+      </select>
+      
+      <button onclick="salvarEdicaoProduto()">💾 Salvar Alterações</button>
+    </div>
+  </div>
+
+  <!-- MODAL DE HISTÓRICO DE VENDAS -->
+  <div id="modalHistorico" class="modal">
+    <div class="modal-content">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>📜 Histórico Detalhado de Vendas</h2>
+        <button class="btn-danger" style="width: auto;" onclick="fecharHistorico()">X</button>
+      </div>
+      <hr style="margin: 15px 0;">
+      <div id="conteudoHistorico">Carregando histórico...</div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let historicoGlobal = [];
+    let cardapioGlobal = [];
+
+    socket.on('atualizar_cardapio', (cardapio) => {
+      cardapioGlobal = cardapio;
+      document.getElementById('qtdItens').innerText = cardapio.length;
+      const container = document.getElementById('tabelaCardapio');
+      container.innerHTML = '';
+
+      cardapio.forEach(item => {
+        const disponivel = item.disponivel !== false;
+        const btnTexto = disponivel ? '⏸️ Pausar' : '▶️ Ativar';
+        const statusTexto = disponivel ? '<span style="color:green; font-weight:bold;">[Ativo]</span>' : '<span style="color:red; font-weight:bold;">[Esgotado]</span>';
+
+        container.innerHTML += `
+          <div class="item-cardapio" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee;">
+            <div>
+              <strong>${item.nome}</strong> - R$ ${item.preco.toFixed(2)} ${item.unidade === 'KG' ? '/kg' : ''}
+              <small>(${item.categoria})</small> ${statusTexto}
+            </div>
+            <div style="display: flex; gap: 5px;">
+              <button class="btn-pause" style="width: auto;" onclick="alternarStatus(${item.id})">${btnTexto}</button>
+              <button class="btn-warning" style="width: auto;" onclick="abrirModalEditar(${item.id})">✏️ Editar</button>
+              <button class="btn-danger" style="width: auto;" onclick="removerProduto(${item.id})">🗑️ Excluir</button>
+            </div>
+          </div>
+        `;
+      });
+    });
+
+    socket.on('atualizar_comandas', (comandas) => {
+      let mesasAtivas = 0;
+      Object.keys(comandas).forEach(m => {
+        if (comandas[m].status !== 'FECHADA') mesasAtivas++;
+      });
+      document.getElementById('qtdMesas').innerText = mesasAtivas;
+    });
+
+    socket.on('atualizar_historico', (historico) => {
+      historicoGlobal = historico;
+      
+      let faturamentoTotal = 0;
+      let contagemItens = {};
+
+      historico.forEach(venda => {
+        faturamentoTotal += venda.total;
+        venda.itens.forEach(i => {
+          contagemItens[i.nome] = (contagemItens[i.nome] || 0) + 1;
+        });
+      });
+
+      document.getElementById('fatTotal').innerText = `R$ ${faturamentoTotal.toFixed(2)}`;
+
+      let ordenados = Object.keys(contagemItens).map(k => ({ nome: k, qtd: contagemItens[k] }));
+      ordenados.sort((a, b) => b.qtd - a.qtd);
+
+      const listaMais = document.getElementById('listaMaisVendidos');
+      const listaMenos = document.getElementById('listaMenosVendidos');
+
+      if (ordenados.length > 0) {
+        listaMais.innerHTML = ordenados.slice(0, 3).map(i => `<li><b>${i.nome}</b>: ${i.qtd} vendas</li>`).join('');
+        listaMenos.innerHTML = ordenados.slice(-3).reverse().map(i => `<li><b>${i.nome}</b>: ${i.qtd} vendas</li>`).join('');
+      }
+    });
+
+    socket.on('atualizar_cupom', (cupom) => {
+      document.getElementById('codCupom').value = cupom.codigo;
+      document.getElementById('descCupom').value = cupom.desconto;
+    });
+
+    function alternarStatus(id) {
+      socket.emit('alternar_disponibilidade', id);
+    }
+
+    function abrirModalEditar(id) {
+      const item = cardapioGlobal.find(i => i.id == id);
+      if (!item) return alert('Erro: Produto não encontrado!');
+
+      document.getElementById('editId').value = item.id;
+      document.getElementById('editNome').value = item.nome;
+      document.getElementById('editPreco').value = item.preco;
+      document.getElementById('editUnidade').value = item.unidade || 'UN';
+      document.getElementById('editCategoria').value = item.categoria;
+      
+      document.getElementById('modalEditar').style.display = 'flex';
+    }
+
+    function fecharModalEditar() {
+      document.getElementById('modalEditar').style.display = 'none';
+    }
+
+    function salvarEdicaoProduto() {
+      const id = document.getElementById('editId').value;
+      const nome = document.getElementById('editNome').value;
+      const preco = document.getElementById('editPreco').value;
+      const unidade = document.getElementById('editUnidade').value;
+      const categoria = document.getElementById('editCategoria').value;
+
+      if (!nome || !preco) return alert('Preencha todos os campos!');
+
+      socket.emit('editar_item_cardapio', { 
+        id: Number(id), 
+        nome, 
+        preco: parseFloat(preco), 
+        unidade,
+        categoria 
+      });
+
+      fecharModalEditar();
+    }
+
+    function abrirHistorico() {
+      const modal = document.getElementById('modalHistorico');
+      const container = document.getElementById('conteudoHistorico');
+      modal.style.display = 'flex';
+
+      if (historicoGlobal.length === 0) {
+        container.innerHTML = '<p>Nenhuma venda encerrada ainda.</p>';
+        return;
+      }
+
+      container.innerHTML = '';
+      historicoGlobal.slice().reverse().forEach(v => {
+        let listaItens = v.itens.map(i => `${i.nome}`).join(', ');
+        container.innerHTML += `
+          <div style="border-bottom: 1px solid #ddd; padding: 10px 0;">
+            <p><strong>Mesa ${v.mesa} (${v.cliente})</strong> - <small>${v.dataHora}</small></p>
+            <p><small>Itens: ${listaItens}</small></p>
+            <p style="color: #2e7d32; font-weight: bold;">Total: R$ ${v.total.toFixed(2)} (${v.formaPagamento})</p>
+          </div>
+        `;
+      });
+    }
+
+    function fecharHistorico() {
+      document.getElementById('modalHistorico').style.display = 'none';
+    }
+
+    function salvarCupom() {
+      const codigo = document.getElementById('codCupom').value;
+      const desconto = document.getElementById('descCupom').value;
+      socket.emit('salvar_cupom', { codigo, desconto });
+      alert('Cupom atualizado!');
+    }
+
+    function cadastrarProduto() {
+      const nome = document.getElementById('nomeProd').value;
+      const preco = document.getElementById('precoProd').value;
+      const unidade = document.getElementById('unidadeProd').value;
+      const categoria = document.getElementById('catProd').value;
+
+      if (!nome || !preco) return alert('Preencha o nome e o preço!');
+      socket.emit('adicionar_item_cardapio', { nome, preco, unidade, categoria });
+      document.getElementById('nomeProd').value = '';
+      document.getElementById('precoProd').value = '';
+      alert('Produto adicionado!');
+    }
+
+    function removerProduto(id) {
+      if (confirm('Deseja remover do cardápio?')) {
+        socket.emit('remover_item_cardapio', id);
+      }
+    }
+  </script>
+</body>
+</html>

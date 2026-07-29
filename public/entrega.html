@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrega - Garçom</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header style="background-color: #007bff; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
+    <div>
+      <h1 style="margin:0;">🛵 Painel do Entregador</h1>
+      <p style="margin:0;">Pedidos prontos para entrega na mesa</p>
+    </div>
+    <button id="btnAtivarSom" onclick="ativarAudio()" style="width: auto; background: #ff9800; padding: 10px 15px;">🔔 Ativar Alerta Sonoro</button>
+  </header>
+
+  <div id="containerEntrega" style="padding: 20px;">
+    <p>Carregando pedidos prontos...</p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let totalProntosAnterior = 0;
+    let audioAtivado = false;
+    let audioCtx = null;
+
+    function ativarAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.resume();
+      audioAtivado = true;
+      const btn = document.getElementById('btnAtivarSom');
+      btn.innerText = '✅ Som Ativado';
+      btn.style.background = '#4caf50';
+    }
+
+    function tocarCampainha() {
+      if (!audioAtivado || !audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+      } catch(e) {}
+    }
+
+    socket.on('atualizar_pedidos', (pedidos) => {
+      const container = document.getElementById('containerEntrega');
+      
+      // Filtra pedidos com status PRONTO
+      const prontos = pedidos.filter(p => p.status === 'PRONTO');
+
+      if (prontos.length > totalProntosAnterior) {
+        tocarCampainha();
+      }
+      totalProntosAnterior = prontos.length;
+
+      if (prontos.length === 0) {
+        container.innerHTML = '<div class="card"><h3>Nenhum pedido aguardando entrega no momento.</h3></div>';
+        return;
+      }
+
+      container.innerHTML = '';
+
+      prontos.forEach(p => {
+        let listaItens = p.itens.map(i => `<li><b>${i.nome}</b> ${i.obs ? `<i>(${i.obs})</i>` : ''}</li>`).join('');
+
+        container.innerHTML += `
+          <div class="card status-PRONTO">
+            <h2>📍 MESA ${p.mesa}</h2>
+            <p><b>Cliente:</b> ${p.cliente}</p>
+            <ul style="margin-left: 20px; font-size: 16px; margin: 10px 0;">${listaItens}</ul>
+            <button onclick="marcarEntregue(${p.id})">✅ Marcar como Entregue na Mesa</button>
+          </div>
+        `;
+      });
+    });
+
+    function marcarEntregue(idPedido) {
+      socket.emit('atualizar_status_pedido', { idPedido, novoStatus: 'ENTREGUE' });
+    }
+  </script>
+</body>
+</html>

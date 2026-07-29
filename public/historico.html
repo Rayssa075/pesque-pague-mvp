@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Histórico de Vendas - Pesque e Pague</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .resumo-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .card-metrica {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .card-metrica h3 { margin: 0 0 5px 0; font-size: 14px; color: #555; }
+    .card-metrica p { margin: 0; font-size: 22px; font-weight: bold; color: #2e7d32; }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background-color: #2e7d32; color: white; }
+    tr:hover { background-color: #f5f5f5; }
+  </style>
+</head>
+<body>
+
+  <header style="background-color: #2e7d32; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
+    <div>
+      <h1 style="margin: 0; color: white;">📊 Histórico de Vendas</h1>
+      <p style="margin: 0; color: #e8f5e9;">Resumo Financeiro das Comandas Encerradas</p>
+    </div>
+    <a href="caixa.html" style="background: white; color: #2e7d32; padding: 8px 15px; border-radius: 6px; font-weight: bold; text-decoration: none;">💵 Voltar ao Caixa</a>
+  </header>
+
+  <div style="padding: 20px;">
+    
+    <!-- Painel de Métricas -->
+    <div class="resumo-cards">
+      <div class="card-metrica">
+        <h3>Total Faturado</h3>
+        <p id="totalFaturado">R$ 0,00</p>
+      </div>
+      <div class="card-metrica">
+        <h3>Total de Descontos</h3>
+        <p id="totalDescontos" style="color: #c62828;">R$ 0,00</p>
+      </div>
+      <div class="card-metrica">
+        <h3>Comandas Encerradas</h3>
+        <p id="qtdComandas" style="color: #0288d1;">0</p>
+      </div>
+    </div>
+
+    <!-- Tabela do Histórico -->
+    <div class="card" style="padding: 0; overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Data/Hora</th>
+            <th>Mesa</th>
+            <th>Cliente</th>
+            <th>Forma Pagto</th>
+            <th>Desconto</th>
+            <th>Total Final</th>
+          </tr>
+        </thead>
+        <tbody id="tabelaHistorico">
+          <tr>
+            <td colspan="6" style="text-align: center; color: #777;">Carregando histórico...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    socket.on('atualizar_historico', (historico) => {
+      const tabela = document.getElementById('tabelaHistorico');
+      tabela.innerHTML = '';
+
+      if (historico.length === 0) {
+        tabela.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #777;">Nenhuma comanda encerrada até o momento.</td></tr>';
+        document.getElementById('totalFaturado').innerText = 'R$ 0,00';
+        document.getElementById('totalDescontos').innerText = 'R$ 0,00';
+        document.getElementById('qtdComandas').innerText = '0';
+        return;
+      }
+
+      let faturado = 0;
+      let descontos = 0;
+
+      historico.forEach(venda => {
+        faturado += parseFloat(venda.total);
+        descontos += parseFloat(venda.descontoTotal || 0);
+
+        tabela.innerHTML += `
+          <tr>
+            <td>${venda.dataHora}</td>
+            <td><b>Mesa ${venda.mesa}</b></td>
+            <td>${venda.cliente}</td>
+            <td><span style="background: #e0f2f1; color: #00695c; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;">${venda.formaPagamento}</span></td>
+            <td style="color: ${venda.descontoTotal > 0 ? '#c62828' : '#777'};">
+              ${venda.descontoTotal > 0 ? `-R$ ${parseFloat(venda.descontoTotal).toFixed(2)}` : 'R$ 0,00'}
+            </td>
+            <td><b>R$ ${parseFloat(venda.total).toFixed(2)}</b></td>
+          </tr>
+        `;
+      });
+
+      document.getElementById('totalFaturado').innerText = `R$ ${faturado.toFixed(2)}`;
+      document.getElementById('totalDescontos').innerText = `R$ ${descontos.toFixed(2)}`;
+      document.getElementById('qtdComandas').innerText = historico.length;
+    });
+  </script>
+</body>
+</html>

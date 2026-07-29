@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cardápio - Pesque e Pague</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .status-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    .status-PENDENTE { background-color: #ffe0b2; color: #e65100; }
+    .status-EM_PREPARO { background-color: #bbdefb; color: #0d47a1; }
+    .status-PRONTO { background-color: #c8e6c9; color: #1b5e20; }
+    .status-ENTREGUE { background-color: #e0e0e0; color: #424242; }
+
+    .aviso-bloqueio {
+      background: #ffebee;
+      border: 2px dashed #c62828;
+      color: #c62828;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 15px;
+      display: none;
+    }
+
+    .item-esgotado {
+      opacity: 0.5;
+      background-color: #f9f9f9;
+    }
+    .badge-esgotado {
+      background-color: #d32f2f;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .item-carrinho {
+      background: #fdfdfd;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .input-obs-item {
+      width: 100%;
+      margin-top: 6px;
+      padding: 6px;
+      font-size: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🎣 Pesque e Pague</h1>
+    <p>Faça seu pedido direto da sua mesa!</p>
+  </header>
+
+  <div id="alertaBloqueio" class="aviso-bloqueio">
+    🛑 Conta Solicitada! Novos pedidos foram bloqueados. Aguarde o atendimento do caixa.
+  </div>
+
+  <div id="sec-identificacao" class="card">
+    <h3>Sua Mesa</h3>
+    <label>Número da Mesa:</label>
+    <input type="number" id="numMesa" placeholder="Ex: 5" value="5" onchange="verificarStatusMesa()">
+    
+    <label>Seu Nome:</label>
+    <input type="text" id="nomeCliente" placeholder="Digite seu nome">
+    
+    <label>PIN da Mesa (Fornecido pelo Garçom):</label>
+    <input type="password" id="pinMesa" placeholder="Digite o PIN (Teste: 1234)">
+  </div>
+
+  <div class="card" style="border-left: 6px solid #2196f3; background: #f4f9ff;">
+    <h3>⏱️ Acompanhar Meus Pedidos</h3>
+    <div id="statusPedidosCliente">
+      <p style="color: #666;">Você ainda não fez nenhum pedido nesta mesa.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📋 Cardápio</h3>
+    <div id="listaCardapio">Carregando itens...</div>
+  </div>
+
+  <div class="card">
+    <h3>🛒 Seu Pedido Atual</h3>
+    <div id="listaCarrinho">
+      <p style="color: #777;">Seu carrinho está vazio.</p>
+    </div>
+    
+    <!-- Observações e Cupom no Final do Pedido -->
+    <div id="secFinalizarCarrinho" style="display: none; margin-top: 15px;">
+      <label><b>📝 Observação Geral para a Cozinha (Opcional):</b></label>
+      <input type="text" id="obsGeralPedido" placeholder="Ex: Trazer pratos e talheres extras, caprichar no limão..." style="margin-bottom: 12px;">
+
+      <div style="display: flex; gap: 5px; margin: 10px 0;">
+        <input type="text" id="inputCupom" placeholder="Possui Cupom? (Ex: PESQUE10)" style="text-transform: uppercase;">
+        <button style="width: 120px;" onclick="aplicarCupom()">Aplicar</button>
+      </div>
+
+      <h4>Total do Pedido: R$ <span id="totalCarrinho">0.00</span></h4>
+      <button id="btnEnviarPedido" onclick="enviarPedido()">🚀 Enviar Pedido para a Cozinha</button>
+    </div>
+  </div>
+
+  <div id="cardFechamento" class="card" style="border: 2px solid #d32f2f;">
+    <h3>💳 Deseja ir embora?</h3>
+    <label>Forma de Pagamento Pretendida:</label>
+    <select id="formaPagamento">
+      <option value="PIX">Pix no Balcão</option>
+      <option value="CARTAO">Cartão de Crédito/Débito</option>
+      <option value="DINHEIRO">Dinheiro</option>
+    </select>
+    <button id="btnPedirConta" class="btn-danger" onclick="pedirAConta()">Pedir a Conta / Encerrar</button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let carrinho = [];
+    let valorSubtotal = 0;
+    let descontoAplicado = 0;
+    let cupomAtivoServidor = null;
+    let comandasServidor = {};
+
+    socket.on('atualizar_cardapio', (cardapio) => {
+      const container = document.getElementById('listaCardapio');
+      container.innerHTML = '';
+
+      cardapio.forEach(item => {
+        const indisponivel = item.disponivel === false;
+        const textoUnidade = item.unidade === 'KG' ? '/kg' : '';
+
+        container.innerHTML += `
+          <div class="item-cardapio ${indisponivel ? 'item-esgotado' : ''}" style="display:flex; justify-content:space-between; align-items:center; padding: 10px 0; border-bottom: 1px solid #eee;">
+            <div>
+              <strong>${item.nome}</strong> <small>(${item.categoria})</small><br>
+              <small>R$ ${item.preco.toFixed(2)}${textoUnidade}</small>
+              ${indisponivel ? '<br><span class="badge-esgotado">ESGOTADO</span>' : ''}
+            </div>
+            ${indisponivel ? '<button disabled style="background:#ccc; cursor:not-allowed;">Indisponível</button>' : 
+            `<button class="btn-add-item" onclick="adicionarItem('${item.nome}', ${item.preco})">+ Add</button>`}
+          </div>
+        `;
+      });
+      verificarStatusMesa();
+    });
+
+    socket.on('atualizar_comandas', (comandas) => {
+      comandasServidor = comandas;
+      verificarStatusMesa();
+    });
+
+    function verificarStatusMesa() {
+      const mesa = document.getElementById('numMesa').value;
+      const comanda = comandasServidor[mesa];
+
+      const btnEnviar = document.getElementById('btnEnviarPedido');
+      const btnConta = document.getElementById('btnPedirConta');
+      const alerta = document.getElementById('alertaBloqueio');
+      const btnsAdd = document.querySelectorAll('.btn-add-item');
+
+      if (comanda && (comanda.status === 'AGUARDANDO_PAGAMENTO' || comanda.status === 'FECHADA')) {
+        alerta.style.display = 'block';
+        if (btnEnviar) {
+          btnEnviar.disabled = true;
+          btnEnviar.style.opacity = '0.5';
+          btnEnviar.style.cursor = 'not-allowed';
+        }
+        btnConta.disabled = true;
+        btnConta.style.opacity = '0.5';
+        btnsAdd.forEach(b => b.disabled = true);
+      } else {
+        alerta.style.display = 'none';
+        if (btnEnviar) {
+          btnEnviar.disabled = false;
+          btnEnviar.style.opacity = '1';
+          btnEnviar.style.cursor = 'pointer';
+        }
+        btnConta.disabled = false;
+        btnConta.style.opacity = '1';
+        btnsAdd.forEach(b => b.disabled = false);
+      }
+    }
+
+    socket.on('atualizar_cupom', (cupom) => {
+      cupomAtivoServidor = cupom;
+    });
+
+    socket.on('atualizar_pedidos', (pedidos) => {
+      const mesaAtual = document.getElementById('numMesa').value;
+      const containerStatus = document.getElementById('statusPedidosCliente');
+
+      const meusPedidos = pedidos.filter(p => p.mesa === mesaAtual);
+
+      if (meusPedidos.length === 0) {
+        containerStatus.innerHTML = '<p style="color: #666;">Nenhum pedido ativo no momento.</p>';
+        return;
+      }
+
+      containerStatus.innerHTML = '';
+      meusPedidos.forEach(p => {
+        let textoStatus = p.status;
+        let icone = '⏳';
+
+        if (p.status === 'PENDENTE') { textoStatus = 'Aguardando Cozinha'; icone = '⏳'; }
+        else if (p.status === 'EM_PREPARO') { textoStatus = 'Em Preparo na Cozinha 🍳'; icone = '🔥'; }
+        else if (p.status === 'PRONTO') { textoStatus = 'Pronto! A caminho da mesa 🐟'; icone = '✅'; }
+        else if (p.status === 'ENTREGUE') { textoStatus = 'Entregue na Mesa'; icone = '😋'; }
+
+        const listaItens = p.itens.map(i => `${i.nome}${i.obs ? ` <i>(${i.obs})</i>` : ''}`).join(', ');
+
+        containerStatus.innerHTML += `
+          <div style="border-bottom: 1px solid #e0e0e0; padding: 8px 0;">
+            <strong>${icone} Pedido das ${p.horario}</strong><br>
+            <small style="color: #555;">${listaItens}</small><br>
+            <span class="status-badge status-${p.status}">${textoStatus}</span>
+          </div>
+        `;
+      });
+    });
+
+    function adicionarItem(nome, preco) {
+      carrinho.push({ nome, preco, obs: '' });
+      valorSubtotal += preco;
+      atualizarCarrinho();
+    }
+
+    function atualizarObsItem(index, valor) {
+      carrinho[index].obs = valor.trim();
+    }
+
+    function removerDoCarrinho(index) {
+      valorSubtotal -= carrinho[index].preco;
+      carrinho.splice(index, 1);
+      atualizarCarrinho();
+    }
+
+    function aplicarCupom() {
+      const codigoDigitado = document.getElementById('inputCupom').value.toUpperCase().trim();
+      if (cupomAtivoServidor && codigoDigitado === cupomAtivoServidor.codigo) {
+        descontoAplicado = cupomAtivoServidor.desconto;
+        alert(`Cupom de ${descontoAplicado}% aplicado com sucesso!`);
+      } else {
+        alert('Cupom inválido ou expirado.');
+        descontoAplicado = 0;
+      }
+      atualizarCarrinho();
+    }
+
+    function atualizarCarrinho() {
+      const lista = document.getElementById('listaCarrinho');
+      const secFinalizar = document.getElementById('secFinalizarCarrinho');
+
+      if (carrinho.length === 0) {
+        lista.innerHTML = '<p style="color: #777;">Seu carrinho está vazio.</p>';
+        secFinalizar.style.display = 'none';
+        return;
+      }
+
+      secFinalizar.style.display = 'block';
+      lista.innerHTML = '';
+
+      carrinho.forEach((item, index) => {
+        lista.innerHTML += `
+          <div class="item-carrinho">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <b>${item.nome}</b>
+              <div>
+                <span>R$ ${item.preco.toFixed(2)}</span>
+                <button onclick="removerDoCarrinho(${index})" style="width:auto; padding:2px 8px; background:#d32f2f; margin-left: 8px;">❌</button>
+              </div>
+            </div>
+            <input type="text" class="input-obs-item" placeholder="Obs. para este item (ex: Sem cebola, bem passado)" 
+                   value="${item.obs}" onchange="atualizarObsItem(${index}, this.value)">
+          </div>
+        `;
+      });
+
+      let valorFinal = valorSubtotal;
+      if (descontoAplicado > 0) {
+        valorFinal = valorSubtotal * (1 - descontoAplicado / 100);
+      }
+
+      document.getElementById('totalCarrinho').innerText = valorFinal.toFixed(2);
+    }
+
+    function enviarPedido() {
+      const mesa = document.getElementById('numMesa').value;
+      const cliente = document.getElementById('nomeCliente').value;
+      const pin = document.getElementById('pinMesa').value;
+      const obsGeral = document.getElementById('obsGeralPedido').value.trim();
+
+      if (!cliente || !mesa || !pin) { alert('Preencha Nome, Mesa e PIN!'); return; }
+      if (carrinho.length === 0) { alert('Seu carrinho está vazio!'); return; }
+
+      if (obsGeral !== '') {
+        if (carrinho[0].obs !== '') {
+          carrinho[0].obs += ` | Geral: ${obsGeral}`;
+        } else {
+          carrinho[0].obs = `Obs Geral: ${obsGeral}`;
+        }
+      }
+
+      let valorDescontoR$ = valorSubtotal * (descontoAplicado / 100);
+      let totalComDesconto = valorSubtotal - valorDescontoR$;
+
+      socket.emit('novo_pedido', { 
+        mesa, 
+        cliente, 
+        pin, 
+        itens: carrinho, 
+        total: totalComDesconto,
+        desconto: valorDescontoR$ 
+      });
+    }
+
+    function pedirAConta() {
+      const mesa = document.getElementById('numMesa').value;
+      const formaPagamento = document.getElementById('formaPagamento').value;
+      if (!mesa) return;
+      if (confirm('Deseja pedir a conta? A comanda será bloqueada para novos pedidos.')) {
+        socket.emit('solicitar_fechamento', { mesa, formaPagamento });
+        alert('Solicitação enviada ao caixa! A comanda foi bloqueada.');
+      }
+    }
+
+    socket.on('sucesso_pedido', (msg) => {
+      alert(msg);
+      carrinho = [];
+      valorSubtotal = 0;
+      descontoAplicado = 0;
+      document.getElementById('obsGeralPedido').value = '';
+      atualizarCarrinho();
+    });
+
+    socket.on('erro_pin', (msg) => alert('❌ ' + msg));
+  </script>
+</body>
+</html>

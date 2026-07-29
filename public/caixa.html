@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Caixa - Pesque e Pague</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .grid-caixa { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .grid-caixa { grid-template-columns: 1fr; } }
+    .card-comanda { border-left: 6px solid #ff9800; background: #fff8e1; }
+    .btn-remover-item {
+      background-color: #d32f2f;
+      color: white;
+      border: none;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <header style="background-color: #2e7d32; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
+    <div>
+      <h1 style="margin: 0; color: white;">💵 Painel do Caixa / Balcão</h1>
+      <p style="margin: 0; color: #e8f5e9;">Lançamentos Diretos e Fechamento de Comandas</p>
+    </div>
+    <a href="historico.html" style="background: white; color: #2e7d32; padding: 8px 15px; border-radius: 6px; font-weight: bold; text-decoration: none;">📊 Ver Histórico de Vendas</a>
+  </header>
+
+  <div style="padding: 20px;">
+    <div class="grid-caixa">
+      
+      <!-- Lançamento Rápido no Caixa -->
+      <div class="card">
+        <h3>➕ Lançamento Rápido na Comanda</h3>
+        
+        <label>Número da Mesa:</label>
+        <input type="number" id="lancMesa" placeholder="Ex: 5" style="margin-bottom: 10px;">
+
+        <label>Tipo de Lançamento:</label>
+        <select id="tipoLancamento" onchange="alternarCamposCaixa()" style="margin-bottom: 10px;">
+          <option value="PEIXE">⚖️ Peixe Pesado (Quilo)</option>
+          <option value="AVULSO">🍬 Item Avulso / Produto do Balcão</option>
+        </select>
+
+        <!-- Campos para Peixe -->
+        <div id="secPeixe">
+          <label>Nome do Peixe:</label>
+          <input type="text" id="peixeNome" value="Tilápia Limpa" placeholder="Ex: Tilápia Limpa">
+          
+          <div style="display: flex; gap: 10px; margin-top: 5px;">
+            <div>
+              <label>Peso (kg):</label>
+              <input type="number" step="0.001" id="peixePeso" placeholder="Ex: 1.850">
+            </div>
+            <div>
+              <label>Preço/kg (R$):</label>
+              <input type="number" step="0.01" id="peixePreco" value="35.00">
+            </div>
+          </div>
+        </div>
+
+        <!-- Campos para Item Avulso -->
+        <div id="secAvulso" style="display: none;">
+          <label>Descrição do Item:</label>
+          <input type="text" id="avulsoNome" placeholder="Ex: Chiclete / Sorvete / Doce / Cerveja extra">
+          
+          <label style="margin-top: 5px;">Valor Total (R$):</label>
+          <input type="number" step="0.01" id="avulsoValor" placeholder="Ex: 5.00">
+        </div>
+
+        <br>
+        <button style="background-color: #2e7d32; font-weight: bold;" onclick="enviarLancamentoCaixa()">💾 Lançar na Comanda</button>
+      </div>
+
+      <!-- Comandas Abertas / Aguardando Fechamento -->
+      <div class="card">
+        <h3>📋 Comandas Ativas</h3>
+        <div id="listaComandas">Carregando comandas...</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    function alternarCamposCaixa() {
+      const tipo = document.getElementById('tipoLancamento').value;
+      document.getElementById('secPeixe').style.display = tipo === 'PEIXE' ? 'block' : 'none';
+      document.getElementById('secAvulso').style.display = tipo === 'AVULSO' ? 'block' : 'none';
+    }
+
+    function enviarLancamentoCaixa() {
+      const mesa = document.getElementById('lancMesa').value;
+      const tipo = document.getElementById('tipoLancamento').value;
+
+      if (!mesa) return alert('Por favor, informe o número da Mesa!');
+
+      let nomeItem = '';
+      let valorTotal = 0;
+      let obs = '';
+
+      if (tipo === 'PEIXE') {
+        const peixe = document.getElementById('peixeNome').value;
+        const peso = parseFloat(document.getElementById('peixePeso').value);
+        const precoKg = parseFloat(document.getElementById('peixePreco').value);
+
+        if (!peixe || isNaN(peso) || isNaN(precoKg) || peso <= 0) {
+          return alert('Preencha corretamente o peso e valor por kg do peixe!');
+        }
+        
+        nomeItem = `${peixe} (${peso.toFixed(3)} kg)`;
+        valorTotal = peso * precoKg;
+        obs = 'Pesagem no Caixa';
+      } else {
+        nomeItem = document.getElementById('avulsoNome').value;
+        valorTotal = parseFloat(document.getElementById('avulsoValor').value);
+        obs = 'Item Avulso/Balcão';
+
+        if (!nomeItem || isNaN(valorTotal) || valorTotal <= 0) {
+          return alert('Preencha a descrição e o valor válido do item!');
+        }
+      }
+
+      socket.emit('lançar_item_caixa', { 
+        mesa: mesa, 
+        nomeItem: nomeItem, 
+        valorTotal: valorTotal, 
+        obs: obs 
+      });
+
+      document.getElementById('peixePeso').value = '';
+      document.getElementById('avulsoNome').value = '';
+      document.getElementById('avulsoValor').value = '';
+    }
+
+    function cancelarItemComanda(mesa, indexItem, nomeItem) {
+      if (confirm(`Tem certeza que deseja cancelar o item "${nomeItem}" da Mesa ${mesa}?`)) {
+        socket.emit('remover_item_comanda', { mesa, indexItem });
+      }
+    }
+
+    socket.on('atualizar_comandas', (comandas) => {
+      const container = document.getElementById('listaComandas');
+      container.innerHTML = '';
+
+      const chaves = Object.keys(comandas).filter(m => comandas[m].status !== 'FECHADA');
+
+      if (chaves.length === 0) {
+        container.innerHTML = '<p style="color: #777;">Nenhuma comanda aberta no momento.</p>';
+        return;
+      }
+
+      chaves.forEach(mesa => {
+        const c = comandas[mesa];
+        const statusTexto = c.status === 'AGUARDANDO_PAGAMENTO' ? '🔴 PEDIU A CONTA' : '🟢 ABERTA';
+        
+        let itensHTML = (c.itensConsumidos || []).map((i, index) => `
+          <li style="margin-bottom: 4px;">
+            <b>${i.nome}</b> - R$ ${parseFloat(i.preco).toFixed(2)} 
+            ${i.obs ? `<small><i>(${i.obs})</i></small>` : ''}
+            <button class="btn-remover-item" onclick="cancelarItemComanda('${mesa}', ${index}, '${i.nome}')">❌ Cancelar</button>
+          </li>
+        `).join('');
+
+        const temDesconto = c.descontoTotal && c.descontoTotal > 0;
+        const textoDesconto = temDesconto ? `<br><span style="color: #c62828; font-size: 13px; font-weight: bold;">🏷️ Desconto Aplicado: -R$ ${c.descontoTotal.toFixed(2)}</span>` : '';
+
+        container.innerHTML += `
+          <div class="card card-comanda" style="margin-bottom: 15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h4>MESA ${mesa} (${c.cliente})</h4>
+              <small><b>${statusTexto}</b></small>
+            </div>
+            <ul style="font-size: 14px; margin: 8px 0 8px 20px;">${itensHTML}</ul>
+            <p style="font-size: 16px; margin-bottom: 5px;">
+              <b>Total a Pagar: R$ ${parseFloat(c.total).toFixed(2)}</b> 
+              ${c.formaPagamento ? `(${c.formaPagamento})` : ''}
+              ${textoDesconto}
+            </p>
+            <button class="btn-danger" onclick="encerrarMesa('${mesa}')">✅ Encerrar e Receber</button>
+          </div>
+        `;
+      });
+    });
+
+    function encerrarMesa(mesa) {
+      if (confirm(`Confirmar pagamento e encerrar comanda da Mesa ${mesa}?`)) {
+        socket.emit('encerrar_mesa', mesa);
+      }
+    }
+
+    socket.on('sucesso_pedido', (msg) => alert('✅ ' + msg));
+    socket.on('erro_pin', (msg) => alert('❌ ' + msg));
+  </script>
+</body>
+</html>

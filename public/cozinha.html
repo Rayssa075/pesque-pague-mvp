@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cozinha - Painel de Pedidos</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .obs-destaque {
+      background: #ffebee;
+      color: #c62828;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 14px;
+      display: inline-block;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <header style="background-color: #d32f2f; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
+    <div>
+      <h1 style="margin:0;">🍳 Painel da Cozinha</h1>
+      <p style="margin:0;">Pedidos em Tempo Real</p>
+    </div>
+    <button id="btnAtivarSom" onclick="ativarAudio()" style="width: auto; background: #ff9800; padding: 10px 15px;">🔔 Ativar Alerta Sonoro</button>
+  </header>
+
+  <div id="containerPedidos" style="padding: 20px;">
+    <p>Aguardando novos pedidos...</p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let totalPedidosAnterior = 0;
+    let audioAtivado = false;
+    let audioCtx = null;
+
+    function ativarAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.resume();
+      audioAtivado = true;
+      const btn = document.getElementById('btnAtivarSom');
+      btn.innerText = '✅ Som Ativado';
+      btn.style.background = '#4caf50';
+    }
+
+    function tocarBeep() {
+      if (!audioAtivado || !audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+      } catch(e) {}
+    }
+
+    socket.on('atualizar_pedidos', (pedidos) => {
+      const container = document.getElementById('containerPedidos');
+      
+      const pendentesEPreparo = pedidos.filter(p => p.status === 'PENDENTE' || p.status === 'EM_PREPARO');
+
+      if (pendentesEPreparo.length > totalPedidosAnterior) {
+        tocarBeep();
+      }
+      totalPedidosAnterior = pendentesEPreparo.length;
+
+      const pedidosCozinha = pedidos.filter(p => p.status !== 'ENTREGUE');
+
+      if (pedidosCozinha.length === 0) {
+        container.innerHTML = '<div class="card"><h3>Nenhum pedido pendente no momento! 🎉</h3></div>';
+        return;
+      }
+
+      container.innerHTML = '';
+
+      pedidosCozinha.forEach(p => {
+        let listaItens = p.itens.map(i => `
+          <li style="margin-bottom: 8px;">
+            <b>${i.nome}</b>
+            ${i.obs ? `<br><span class="obs-destaque">⚠️ OBS: ${i.obs}</span>` : ''}
+          </li>
+        `).join('');
+        
+        let botaoAcao = '';
+        if (p.status === 'PENDENTE') {
+          botaoAcao = `<button class="btn-warning" onclick="mudarStatus(${p.id}, 'EM_PREPARO')">👨‍🍳 Iniciar Preparo</button>`;
+        } else if (p.status === 'EM_PREPARO') {
+          botaoAcao = `<button onclick="mudarStatus(${p.id}, 'PRONTO')">✅ Marcar como Pronto</button>`;
+        } else {
+          botaoAcao = `<p style="color: green; font-weight: bold;">Aguardando Retirada/Entrega pelo Garçom</p>`;
+        }
+
+        container.innerHTML += `
+          <div class="card status-${p.status}">
+            <div style="display: flex; justify-content: space-between;">
+              <h3>MESA ${p.mesa} (${p.cliente})</h3>
+              <small>${p.horario}</small>
+            </div>
+            <hr style="margin: 10px 0;">
+            <ul style="margin-left: 20px; font-size: 18px;">${listaItens}</ul>
+            <br>
+            <p><b>Status:</b> ${p.status}</p>
+            ${botaoAcao}
+          </div>
+        `;
+      });
+    });
+
+    function mudarStatus(idPedido, novoStatus) {
+      socket.emit('atualizar_status_pedido', { idPedido, novoStatus });
+    }
+  </script>
+</body>
+</html>
